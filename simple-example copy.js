@@ -1,7 +1,6 @@
 /**
  * LangChain.js 通义千问完整示例
  * 包含多种交互方式和高级功能
- * 此文件为独立的 Node.js 示例，用于展示 LangChain.js 的基本用法
  */
 
 import "dotenv/config";
@@ -15,69 +14,6 @@ import {
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
-/**
- * 创建通义千问模型实例
- * @param {Object} config - 模型配置
- * @returns {ChatAlibabaTongyi} 模型实例
- */
-function createQwenModel(config = {}) {
-  return new ChatAlibabaTongyi({
-    model: config.model || "qwen-turbo",
-    temperature: config.temperature ?? 0.7,
-    topP: config.topP ?? 0.8,
-    maxTokens: config.maxTokens ?? 2000,
-    apiKey: config.apiKey || process.env.ALIBABA_API_KEY,
-    ...config,
-  });
-}
-
-/**
- * 带重试机制的函数调用
- * @param {Function} fn - 要执行的函数
- * @param {number} maxRetries - 最大重试次数
- * @returns {Promise<any>} 函数执行结果
- */
-async function withRetry(fn, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      console.log(`尝试 ${i + 1}/${maxRetries} 失败: ${error.message}`);
-      if (i === maxRetries - 1) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-    }
-  }
-}
-
-/**
- * 超时控制函数
- * @param {Promise} promise - 要执行的 Promise
- * @param {number} timeoutMs - 超时时间（毫秒）
- * @returns {Promise<any>} Promise 执行结果
- */
-function timeoutPromise(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`请求超时 ${timeoutMs}ms`)), timeoutMs),
-    ),
-  ]);
-}
-
-/**
- * 测量函数执行时间
- * @param {Function} fn - 要执行的函数
- * @param {string} name - 函数名称
- * @returns {Promise<any>} 函数执行结果
- */
-async function measureTime(fn, name) {
-  const start = Date.now();
-  const result = await fn();
-  const end = Date.now();
-  console.log(`${name}: ${end - start}ms`);
-  return result;
-}
-
 async function main() {
   console.log("LangChain.js 与通义千问完整交互示例");
   console.log("==============================================");
@@ -85,7 +21,13 @@ async function main() {
 
   try {
     // 初始化模型
-    const model = createQwenModel();
+    const model = new ChatAlibabaTongyi({
+      model: "qwen-turbo",
+      temperature: 0.7,
+      topP: 0.8,
+      maxTokens: 2000,
+      apiKey: process.env.ALIBABA_API_KEY,
+    });
 
     console.log("✅ 模型初始化成功！\n");
 
@@ -183,8 +125,17 @@ async function main() {
     console.log("\n3.1 不同温度参数对比");
     console.log("-".repeat(40));
 
-    const creativeModel = createQwenModel({ temperature: 0.9 });
-    const preciseModel = createQwenModel({ temperature: 0.1 });
+    const creativeModel = new ChatAlibabaTongyi({
+      model: "qwen-turbo",
+      temperature: 0.9, // 高温度，更具创造性
+      apiKey: process.env.ALIBABA_API_KEY,
+    });
+
+    const preciseModel = new ChatAlibabaTongyi({
+      model: "qwen-turbo",
+      temperature: 0.1, // 低温度，更精确
+      apiKey: process.env.ALIBABA_API_KEY,
+    });
 
     const testPrompt = [new HumanMessage("给宠物店起10个名字")];
 
@@ -200,11 +151,13 @@ async function main() {
     console.log("\n3.2 自定义参数配置");
     console.log("-".repeat(40));
 
-    const customModel = createQwenModel({
+    const customModel = new ChatAlibabaTongyi({
+      model: "qwen-turbo",
       temperature: 0.7,
       topP: 0.9,
       maxTokens: 500,
       stop: ["。", "！"], // 停止词
+      apiKey: process.env.ALIBABA_API_KEY,
     });
 
     const customResponse = await customModel.invoke([
@@ -293,6 +246,18 @@ async function main() {
     console.log("=".repeat(50));
 
     // 5.1 带重试的调用
+    async function withRetry(fn, maxRetries = 3) {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          return await fn();
+        } catch (error) {
+          console.log(`尝试 ${i + 1}/${maxRetries} 失败: ${error.message}`);
+          if (i === maxRetries - 1) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+        }
+      }
+    }
+
     console.log("\n5.1 带重试机制的调用示例");
     console.log("-".repeat(40));
     const safeCall = await withRetry(async () => {
@@ -303,6 +268,17 @@ async function main() {
     // 5.2 超时控制
     console.log("\n5.2 超时控制示例");
     console.log("-".repeat(40));
+    const timeoutPromise = (promise, timeoutMs) => {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`请求超时 ${timeoutMs}ms`)),
+            timeoutMs,
+          ),
+        ),
+      ]);
+    };
 
     try {
       const timeoutResult = await timeoutPromise(
@@ -321,6 +297,14 @@ async function main() {
     // 6.1 记录调用耗时
     console.log("\n6.1 调用耗时统计");
     console.log("-".repeat(40));
+
+    const measureTime = async (fn, name) => {
+      const start = Date.now();
+      const result = await fn();
+      const end = Date.now();
+      console.log(`${name}: ${end - start}ms`);
+      return result;
+    };
 
     await measureTime(
       () => model.invoke([new HumanMessage("快速问题")]),
@@ -363,14 +347,16 @@ async function main() {
 }
 
 // 运行示例
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch(console.error);
-}
+main().catch(console.error);
 
-// 导出常用函数
-module.exports = {
-  createQwenModel,
-  withRetry,
-  timeoutPromise,
-  measureTime,
+// 导出常用配置供其他模块使用
+export const createQwenModel = (config = {}) => {
+  return new ChatAlibabaTongyi({
+    model: config.model || "qwen-turbo",
+    temperature: config.temperature ?? 0.7,
+    topP: config.topP ?? 0.8,
+    maxTokens: config.maxTokens ?? 2000,
+    apiKey: config.apiKey || process.env.ALIBABA_API_KEY,
+    ...config,
+  });
 };
